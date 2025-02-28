@@ -111,18 +111,26 @@ genann *genann_init(int inputs, int hidden_layers, int hidden, int outputs) {
     if (outputs < 1) return 0;
     if (hidden_layers > 0 && hidden < 1) return 0;
 
+    /* Calculate feedforward weights. */
+    const long long hidden_weights = hidden_layers ? (inputs + 1) * hidden + (hidden_layers - 1) * (hidden + 1) * hidden : 0;
+    const long long output_weights = (hidden_layers ? (hidden + 1) : (inputs + 1)) * outputs;
+    const long long total_feedforward_weights = hidden_weights + output_weights;
 
-    const int hidden_weights = hidden_layers ? (inputs+1) * hidden + (hidden_layers-1) * (hidden+1) * hidden : 0;
-    const int output_weights = (hidden_layers ? (hidden+1) : (inputs+1)) * outputs;
-    const int total_weights = (hidden_weights + output_weights);
+    /* Calculate recurrent weights. */
+    const long long recurrent_weights = hidden_layers ? hidden * hidden : 0;
 
-    const int total_neurons = (inputs + hidden * hidden_layers + outputs);
+    /* Total weights = feedforward weights + recurrent weights. */
+    const long long total_weights = total_feedforward_weights + recurrent_weights;
 
-    /* Allocate extra size for weights, outputs, and deltas. */
-    const int size = sizeof(genann) + sizeof(double) * (total_weights + total_neurons + (total_neurons - inputs));
+    /* Total neurons = inputs + hidden * hidden_layers + outputs. */
+    const long long total_neurons = (inputs + hidden * hidden_layers + outputs);
+
+    /* Allocate memory for the network. */
+    const long long size = sizeof(genann) + sizeof(double) * (total_weights + total_neurons + (total_neurons - inputs) + hidden_layers * hidden);
     genann *ret = malloc(size);
     if (!ret) return 0;
 
+    /* Initialize the network. */
     ret->inputs = inputs;
     ret->hidden_layers = hidden_layers;
     ret->hidden = hidden;
@@ -133,18 +141,26 @@ genann *genann_init(int inputs, int hidden_layers, int hidden, int outputs) {
 
     /* Set pointers. */
     ret->weight = (double*)((char*)ret + sizeof(genann));
-    ret->output = ret->weight + ret->total_weights;
-    ret->delta = ret->output + ret->total_neurons;
+    ret->recurrent_weight = ret->weight + total_feedforward_weights;
+    ret->output = ret->recurrent_weight + recurrent_weights;
+    ret->delta = ret->output + total_neurons;
+    ret->hidden_state = ret->delta + (total_neurons - inputs);
 
-    genann_randomize(ret);
+    /* Initialize weights. */
+    for (int i = 0; i < total_weights; ++i) {
+        ((double*)ret->weight)[i] = GENANN_RANDOM() - 0.5;
+    }
 
-    ret->activation_hidden = genann_act_sigmoid_cached;
-    ret->activation_output = genann_act_sigmoid_cached;
+    /* Initialize hidden state to zero. */
+    memset(ret->hidden_state, 0, sizeof(double) * hidden_layers * hidden);
 
-    genann_init_sigmoid_lookup(ret);
+    /* Set activation functions. */
+    ret->activation_hidden = genann_act_sigmoid;
+    ret->activation_output = genann_act_linear;
 
     return ret;
 }
+
 
 
 genann *genann_read(FILE *in) {
@@ -208,57 +224,44 @@ void genann_free(genann *ann) {
 }
 
 
-double const *genann_run(genann const *ann, double const *inputs) {
+double const *genann_run(genann *ann, double *inputs) {
     double const *w = ann->weight;
     double *o = ann->output + ann->inputs;
     double const *i = ann->output;
 
-    /* Copy the inputs to the scratch area, where we also store each neuron's
-     * output, for consistency. This way the first layer isn't a special case. */
+    /* Copy the inputs to the scratch area. */
     memcpy(ann->output, inputs, sizeof(double) * ann->inputs);
 
     int h, j, k;
 
-    if (!ann->hidden_layers) {
-        double *ret = o;
-        for (j = 0; j < ann->outputs; ++j) {
-            double sum = *w++ * -1.0;
-            for (k = 0; k < ann->inputs; ++k) {
-                sum += *w++ * i[k];
-            }
-            *o++ = genann_act_output(ann, sum);
-        }
+    /* Feedforward and recurrent computation. */
+    for (h = 0; h < ann->hidden_layers; ++h) {
+        double *hidden_state = ann->hidden_state + h * ann->hidden;
 
-        return ret;
-    }
-
-    /* Figure input layer */
-    for (j = 0; j < ann->hidden; ++j) {
-        double sum = *w++ * -1.0;
-        for (k = 0; k < ann->inputs; ++k) {
-            sum += *w++ * i[k];
-        }
-        *o++ = genann_act_hidden(ann, sum);
-    }
-
-    i += ann->inputs;
-
-    /* Figure hidden layers, if any. */
-    for (h = 1; h < ann->hidden_layers; ++h) {
         for (j = 0; j < ann->hidden; ++j) {
             double sum = *w++ * -1.0;
-            for (k = 0; k < ann->hidden; ++k) {
+
+            /* Feedforward inputs. */
+            for (k = 0; k < (h == 0 ? ann->inputs : ann->hidden); ++k) {
                 sum += *w++ * i[k];
             }
+
+            /* Recurrent connection. */
+            for (k = 0; k < ann->hidden; ++k) {
+                sum += ann->recurrent_weight[h * ann->hidden * ann->hidden + j * ann->hidden + k] * hidden_state[k];
+            }
+
             *o++ = genann_act_hidden(ann, sum);
         }
 
-        i += ann->hidden;
+        /* Update hidden state. */
+        memcpy(hidden_state, o - ann->hidden, sizeof(double) * ann->hidden);
+
+        i += (h == 0 ? ann->inputs : ann->hidden);
     }
 
+    /* Output layer computation. */
     double const *ret = o;
-
-    /* Figure output layer. */
     for (j = 0; j < ann->outputs; ++j) {
         double sum = *w++ * -1.0;
         for (k = 0; k < ann->hidden; ++k) {
@@ -266,10 +269,6 @@ double const *genann_run(genann const *ann, double const *inputs) {
         }
         *o++ = genann_act_output(ann, sum);
     }
-
-    /* Sanity check that we used all weights and wrote all outputs. */
-    assert(w - ann->weight == ann->total_weights);
-    assert(o - ann->output == ann->total_neurons);
 
     return ret;
 }

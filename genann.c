@@ -119,7 +119,7 @@ genann *genann_init(int inputs, int hidden_layers, int hidden, int outputs) {
     const int total_neurons = (inputs + hidden * hidden_layers + outputs);
 
     /* Allocate extra size for weights, outputs, and deltas. */
-    const int size = sizeof(genann) + sizeof(double) * (total_weights + total_neurons + (total_neurons - inputs));
+    const long long size = sizeof(genann) + sizeof(double) * (total_weights + total_neurons + (total_neurons - inputs));
     genann *ret = malloc(size);
     if (!ret) return 0;
 
@@ -139,7 +139,7 @@ genann *genann_init(int inputs, int hidden_layers, int hidden, int outputs) {
     genann_randomize(ret);
 
     ret->activation_hidden = genann_act_sigmoid_cached;
-    ret->activation_output = genann_act_sigmoid_cached;
+    ret->activation_output = genann_act_linear;
 
     genann_init_sigmoid_lookup(ret);
 

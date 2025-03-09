@@ -40,34 +40,15 @@ extern "C" {
 #endif
 
 struct genann;
-
-typedef double (*genann_actfun)(const struct genann *ann, double a);
-
 typedef struct genann {
-    /* How many inputs, outputs, and hidden neurons. */
-    int inputs, hidden_layers, hidden, outputs;
-
-    /* Which activation function to use for hidden neurons. Default: gennann_act_sigmoid_cached*/
-    genann_actfun activation_hidden;
-
-    /* Which activation function to use for output. Default: gennann_act_sigmoid_cached*/
-    genann_actfun activation_output;
-
-    /* Total number of weights, and size of weights buffer. */
-    int total_weights;
-
-    /* Total number of neurons + inputs and size of output buffer. */
-    int total_neurons;
-
-    /* All weights (total_weights long). */
+    long long inputs, hidden_layers, hidden, outputs;
+    long long total_weights, total_neurons;
     double *weight;
-
-    /* Stores input array and output of each neuron (total_neurons long). */
     double *output;
-
-    /* Stores delta of each hidden and output neuron (total_neurons - inputs long). */
     double *delta;
-
+    double *prev_output; // New field for recurrent state
+    double (*activation_hidden)(const struct genann *ann, double a);
+    double (*activation_output)(const struct genann *ann, double a);
 } genann;
 
 /* Creates and returns a new ann. */

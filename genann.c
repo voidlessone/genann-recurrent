@@ -138,7 +138,7 @@ genann *genann_init(int inputs, int hidden_layers, int hidden, int outputs) {
 
     genann_randomize(ret);
 
-    ret->activation_hidden = genann_act_sigmoid_cached;
+    ret->activation_hidden = genann_act_sigmoid;
     ret->activation_output = genann_act_linear;
 
     genann_init_sigmoid_lookup(ret);

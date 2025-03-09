@@ -74,7 +74,7 @@ double genann_act_sigmoid(const genann *ann unused, double a) {
 
 void genann_init_sigmoid_lookup(const genann *ann) {
     const double f = (sigmoid_dom_max - sigmoid_dom_min) / LOOKUP_SIZE;
-    int i;
+    long long i;
 
     interval = LOOKUP_SIZE / (sigmoid_dom_max - sigmoid_dom_min);
     for (i = 0; i < LOOKUP_SIZE; ++i) {
@@ -109,11 +109,11 @@ genann *genann_init(int inputs, int hidden_layers, int hidden, int outputs) {
     if (outputs < 1) return 0;
     if (hidden_layers > 0 && hidden < 1) return 0;
 
-    const int hidden_weights = hidden_layers ? (inputs + 1) * hidden + (hidden_layers - 1) * (hidden + 1) * hidden : 0;
-    const int output_weights = (hidden_layers ? (hidden + 1) : (inputs + 1)) * outputs;
-    const int total_weights = (hidden_weights + output_weights);
+    const long long hidden_weights = hidden_layers ? (inputs + 1) * hidden + (hidden_layers - 1) * (hidden + 1) * hidden : 0;
+    const long long output_weights = (hidden_layers ? (hidden + 1) : (inputs + 1)) * outputs;
+    const long long total_weights = (hidden_weights + output_weights);
 
-    const int total_neurons = (inputs + hidden * hidden_layers + outputs);
+    const long long total_neurons = (inputs + hidden * hidden_layers + outputs);
 
     /* Allocate extra size for weights, outputs, deltas, and prev_output. */
     const long long size = sizeof(genann) + sizeof(double) * (total_weights + total_neurons + (total_neurons - inputs) + outputs);
@@ -148,8 +148,8 @@ genann *genann_init(int inputs, int hidden_layers, int hidden, int outputs) {
 }
 
 genann *genann_read(FILE *in) {
-    int inputs, hidden_layers, hidden, outputs;
-    int rc;
+    long long inputs, hidden_layers, hidden, outputs;
+    long long rc;
 
     errno = 0;
     rc = fscanf(in, "%d %d %d %d", &inputs, &hidden_layers, &hidden, &outputs);
@@ -160,7 +160,7 @@ genann *genann_read(FILE *in) {
 
     genann *ann = genann_init(inputs, hidden_layers, hidden, outputs);
 
-    int i;
+    long long i;
     for (i = 0; i < ann->total_weights; ++i) {
         errno = 0;
         rc = fscanf(in, " %le", ann->weight + i);
@@ -186,7 +186,7 @@ genann *genann_read(FILE *in) {
 }
 
 genann *genann_copy(genann const *ann) {
-    const int size = sizeof(genann) + sizeof(double) * (ann->total_weights + ann->total_neurons + (ann->total_neurons - ann->inputs) + ann->outputs);
+    const long long size = sizeof(genann) + sizeof(double) * (ann->total_weights + ann->total_neurons + (ann->total_neurons - ann->inputs) + ann->outputs);
     genann *ret = malloc(size);
     if (!ret) return 0;
 
@@ -202,7 +202,7 @@ genann *genann_copy(genann const *ann) {
 }
 
 void genann_randomize(genann *ann) {
-    int i;
+    long long i;
     for (i = 0; i < ann->total_weights; ++i) {
         double r = GENANN_RANDOM();
         ann->weight[i] = r - 0.5;
@@ -283,11 +283,11 @@ double const *genann_run(genann const *ann, double const *inputs) {
     return ret;
 }
 
-oid genann_train(genann const *ann, double const *inputs, double const *desired_outputs, double learning_rate) {
+void genann_train(genann const *ann, double const *inputs, double const *desired_outputs, double learning_rate) {
     /* First, run the network forward to compute the outputs. */
     genann_run(ann, inputs);
 
-    int h, j, k;
+    long long h, j, k;
 
     /* Calculate the error for the output layer. */
     {
@@ -326,7 +326,7 @@ oid genann_train(genann const *ann, double const *inputs, double const *desired_
             /* Sum the weighted errors from the next layer. */
             for (k = 0; k < (h == ann->hidden_layers - 1 ? ann->outputs : ann->hidden); ++k) {
                 const double forward_delta = dd[k];
-                const int windex = k * (ann->hidden + 1) + (j + 1);
+                const long long windex = k * (ann->hidden + 1) + (j + 1);
                 const double forward_weight = ww[windex];
                 delta += forward_delta * forward_weight;
             }
@@ -388,7 +388,7 @@ oid genann_train(genann const *ann, double const *inputs, double const *desired_
 void genann_write(genann const *ann, FILE *out) {
     fprintf(out, "%d %d %d %d", ann->inputs, ann->hidden_layers, ann->hidden, ann->outputs);
 
-    int i;
+    long long i;
     for (i = 0; i < ann->total_weights; ++i) {
         fprintf(out, " %.20e", ann->weight[i]);
     }
